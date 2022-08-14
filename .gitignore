@@ -1,4 +1,6 @@
 *.vcxproj.*
+*.vcxproj
+*.sln
 CMakeCache.txt
 # Build results
 [Dd]ebug/
@@ -16,6 +18,7 @@ bld/
 [Ll]og/
 [Ll]ogs/
 cmake_install.cmake
+CMakeFiles/
 
 # Prerequisites
 *.d
