@@ -9,11 +9,10 @@ set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DVK_PROTOTYPES")
 find_package(glfw3 REQUIRED)
 find_package(glad REQUIRED) #this is drop in replacement for opengl
 find_package(glm REQUIRED)
-# find_package(freetype REQUIRED)
 # find_package(imgui REQUIRED)
 
-# stb does not have a CMake build, but is header-only
-# find_path(STB_INCLUDE_DIRS "stb.h") 
+
+
 
 # Dear ImGui (This static lib setup is done most places)
 set(IMGUI_DIR ${CMAKE_CURRENT_SOURCE_DIR}/imgui)
@@ -51,12 +50,20 @@ target_include_directories( IMGUI
 find_package(OpenGL REQUIRED)
 include_directories(${OPENGL_INCLUDE_DIRS})
 
+
+# ADDING CGAL LIBRARIES
+
+
+
+set(SOURCE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+file(GLOB SOURCE_STUFF RELATIVE ${SOURCE} CONFIGURE_DEPENDS "*.h" "*.cpp")
 ## Create main executable
-add_executable(main src/main.cpp)
+add_executable(main src/main.cpp ${SOURCE_STUFF})
+# add_executable(main SOURCE_STUFF)
 
 target_include_directories(main 
   PRIVATE 
-    "${CMAKE_CURRENT_SOURCE_DIR}/src"
+  SOURCE
 )
 target_link_libraries(
   main
