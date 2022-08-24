@@ -11,9 +11,6 @@ find_package(glad REQUIRED) #this is drop in replacement for opengl
 find_package(glm REQUIRED)
 # find_package(imgui REQUIRED)
 
-
-
-
 # Dear ImGui (This static lib setup is done most places)
 set(IMGUI_DIR ${CMAKE_CURRENT_SOURCE_DIR}/imgui)
 add_library(IMGUI STATIC)
@@ -52,8 +49,42 @@ include_directories(${OPENGL_INCLUDE_DIRS})
 
 
 # ADDING CGAL LIBRARIES
+find_package(CGAL REQUIRED)
+# find_package(CGAL REQUIRED OPTIONAL_COMPONENTS Qt5)
+set(CGAL_DATA_DIR ${CMAKE_CURRENT_SOURCE_DIR}/input)
+
+# Boost and its components
+find_package(Boost REQUIRED)
 
 
+if(NOT Boost_FOUND)
+  message(
+    STATUS
+      "NOTICE: This project requires the Boost library, and will not be compiled."
+  )
+  return()
+endif()
+
+
+find_package(Eigen3 3.1.0 REQUIRED) #(requires 3.1.0 or greater)
+include(CGAL_Eigen3_support)
+if(NOT TARGET CGAL::Eigen3_support)
+  message(
+    STATUS
+      "NOTICE: This project requires Eigen 3.1 (or greater) and will not be compiled."
+  )
+  return()
+endif()
+
+find_package(GLPK QUIET)
+include(CGAL_GLPK_support)
+if(NOT TARGET CGAL::GLPK_support)
+  message(
+    STATUS
+      "NOTICE: This project requires either SCIP or GLPK, and will not be compiled."
+  )
+  return()
+endif()
 
 set(SOURCE ${CMAKE_CURRENT_SOURCE_DIR}/src)
 file(GLOB SOURCE_STUFF RELATIVE ${SOURCE} CONFIGURE_DEPENDS "*.h" "*.cpp")
@@ -73,4 +104,12 @@ target_link_libraries(
     glm::glm
     IMGUI 
     ${OPENGL_LIBRARIES}
+    CGAL::CGAL
+CGAL::Eigen3_support
+CGAL::GLPK_support
 )
+
+
+# target_link_libraries( PUBLIC )
+# # target_link_libraries( PUBLIC CGAL::CGAL_Basic_viewer)
+# target_link_libraries( PUBLIC )

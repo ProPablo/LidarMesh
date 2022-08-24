@@ -3,6 +3,7 @@
 #include <shobjidl.h> //Thats an actual thing wtf
 #include "backend.h"
 
+//https://stackoverflow.com/questions/68601080/how-do-you-open-a-file-explorer-dialogue-in-c
 std::string sSelectedFile;
 std::string sFilePath;
 bool openFile(std::string& outPath)
@@ -64,3 +65,4 @@ bool openFile(std::string& outPath)
 	CoUninitialize();
 	return TRUE;
 }
+
