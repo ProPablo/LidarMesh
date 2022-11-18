@@ -6,8 +6,8 @@ set (CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -DVK_PROTOTYPES")
 set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DVK_PROTOTYPES")
 
 ## Find dependencies
-find_package(glfw3 REQUIRED)
-find_package(glad REQUIRED) #this is drop in replacement for opengl
+find_package(glfw3 REQUIRED) #This is drop in replacement for opengGL
+find_package(glad REQUIRED) 
 find_package(glm REQUIRED)
 # find_package(imgui REQUIRED)
 
@@ -49,11 +49,11 @@ include_directories(${OPENGL_INCLUDE_DIRS})
 
 
 # ADDING CGAL LIBRARIES
+set(CGAL_DATA_DIR ${CMAKE_CURRENT_SOURCE_DIR}/input)
 find_package(CGAL REQUIRED)
 # find_package(CGAL REQUIRED OPTIONAL_COMPONENTS Qt5)
-set(CGAL_DATA_DIR ${CMAKE_CURRENT_SOURCE_DIR}/input)
 
-# Boost and its components
+# # Boost and its components
 find_package(Boost REQUIRED)
 
 
@@ -76,6 +76,10 @@ if(NOT TARGET CGAL::Eigen3_support)
   return()
 endif()
 
+
+set(GLPK_INCLUDE_DIR "C:/depends/glpk-4.35/include")
+set(GLPK_LIBRARIES "C:/depends/glpk-4.35/w64/glpk.lib")
+
 find_package(GLPK QUIET)
 include(CGAL_GLPK_support)
 if(NOT TARGET CGAL::GLPK_support)
@@ -89,8 +93,13 @@ endif()
 set(SOURCE ${CMAKE_CURRENT_SOURCE_DIR}/src)
 file(GLOB SOURCE_STUFF RELATIVE ${SOURCE} CONFIGURE_DEPENDS "*.h" "*.cpp")
 ## Create main executable
-add_executable(main src/main.cpp ${SOURCE_STUFF})
-# add_executable(main SOURCE_STUFF)
+# add_executable(main src/main.cpp ${SOURCE_STUFF})
+add_executable(main src/main.cpp 
+  # src/cgal.cpp
+  # src/cgal.h
+  src/backend.cpp
+  src/backend.h
+)
 
 target_include_directories(main 
   PRIVATE 
@@ -110,6 +119,6 @@ CGAL::GLPK_support
 )
 
 
-# target_link_libraries( PUBLIC )
-# # target_link_libraries( PUBLIC CGAL::CGAL_Basic_viewer)
-# target_link_libraries( PUBLIC )
+# target_link_libraries( main PUBLIC CGAL::Eigen3_support)
+# # # target_link_libraries( PUBLIC CGAL::CGAL_Basic_viewer)
+# target_link_libraries( main PUBLIC CGAL::GLPK_support)

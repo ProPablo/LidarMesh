@@ -1,68 +1,187 @@
-#include <Windows.h>
-#include <string>
-#include <shobjidl.h> //Thats an actual thing wtf
+
 #include "backend.h"
+#include <CGAL/Exact_predicates_inexact_constructions_kernel.h>
+#include <CGAL/IO/read_points.h>
+#include <CGAL/property_map.h>
+#include <CGAL/Surface_mesh.h>
+#include <CGAL/Shape_detection/Efficient_RANSAC.h>
+#include <CGAL/Polygonal_surface_reconstruction.h>
 
-//https://stackoverflow.com/questions/68601080/how-do-you-open-a-file-explorer-dialogue-in-c
-std::string sSelectedFile;
-std::string sFilePath;
-bool openFile(std::string& outPath)
+#ifdef CGAL_USE_SCIP  // defined (or not) by CMake scripts, do not define by hand
+
+#include <CGAL/SCIP_mixed_integer_program_traits.h>
+typedef CGAL::SCIP_mixed_integer_program_traits<double>                        MIP_Solver;
+
+#elif defined(CGAL_USE_GLPK)  // defined (or not) by CMake scripts, do not define by hand
+
+#include <CGAL/GLPK_mixed_integer_program_traits.h>
+typedef CGAL::GLPK_mixed_integer_program_traits<double>                        MIP_Solver;
+
+#endif
+
+
+#if defined(CGAL_USE_GLPK) || defined(CGAL_USE_SCIP)
+
+#include <CGAL/Timer.h>
+
+#include <fstream>
+
+
+typedef CGAL::Exact_predicates_inexact_constructions_kernel                        Kernel;
+
+typedef Kernel::Point_3                                                                                                Point;
+typedef Kernel::Vector_3                                                                                        Vector;
+
+// Point with normal, and plane index
+typedef boost::tuple<Point, Vector, int>                                                        PNI;
+typedef std::vector<PNI>                                                                                        Point_vector;
+typedef CGAL::Nth_of_tuple_property_map<0, PNI>                                                Point_map;
+typedef CGAL::Nth_of_tuple_property_map<1, PNI>                                                Normal_map;
+typedef CGAL::Nth_of_tuple_property_map<2, PNI>                                                Plane_index_map;
+
+typedef CGAL::Shape_detection::Efficient_RANSAC_traits<Kernel, Point_vector, Point_map, Normal_map>     Traits;
+
+typedef CGAL::Shape_detection::Efficient_RANSAC<Traits>             Efficient_ransac;
+typedef CGAL::Shape_detection::Plane<Traits>                                                Plane;
+typedef CGAL::Shape_detection::Point_to_shape_index_map<Traits>     Point_to_shape_index_map;
+
+typedef        CGAL::Polygonal_surface_reconstruction<Kernel>                                Polygonal_surface_reconstruction;
+typedef CGAL::Surface_mesh<Point>                                                                        Surface_mesh;
+
+/*
+* This example first extracts planes from the input point cloud
+* (using RANSAC with default parameters) and then reconstructs
+* the surface model from the planes.
+*/
+
+
+void threadUpdateStatus(std::string& statusRef) 
 {
-	//  CREATE FILE OBJECT INSTANCE
-	HRESULT f_SysHr = CoInitializeEx(NULL, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE);
-	if (FAILED(f_SysHr))
-		return FALSE;
+	auto stream = std::stringstream{};
+	stream << "CleanPictures/Picture_T";
+	auto path = stream.str(); //get the string from the stream
+	statusRef = stream.str();
+	stream.clear();
 
-	// CREATE FileOpenDialog OBJECT
-	IFileOpenDialog* f_FileSystem;
-	f_SysHr = CoCreateInstance(CLSID_FileOpenDialog, NULL, CLSCTX_ALL, IID_IFileOpenDialog, reinterpret_cast<void**>(&f_FileSystem));
-	if (FAILED(f_SysHr)) {
-		CoUninitialize();
-		return FALSE;
-	}
-
-	//  SHOW OPEN FILE DIALOG WINDOW
-	f_SysHr = f_FileSystem->Show(NULL);
-	if (FAILED(f_SysHr)) {
-		f_FileSystem->Release();
-		CoUninitialize();
-		return FALSE;
-	}
-
-	//  RETRIEVE FILE NAME FROM THE SELECTED ITEM
-	IShellItem* f_Files;
-	f_SysHr = f_FileSystem->GetResult(&f_Files);
-	if (FAILED(f_SysHr)) {
-		f_FileSystem->Release();
-		CoUninitialize();
-		return FALSE;
-	}
-
-	//  STORE AND CONVERT THE FILE NAME
-	PWSTR f_Path;
-	f_SysHr = f_Files->GetDisplayName(SIGDN_FILESYSPATH, &f_Path);
-	if (FAILED(f_SysHr)) {
-		f_Files->Release();
-		f_FileSystem->Release();
-		CoUninitialize();
-		return FALSE;
-	}
-
-	//  FORMAT AND STORE THE FILE PATH
-	std::wstring path(f_Path);
-	std::string c(path.begin(), path.end());
-	sFilePath = c;
-	outPath = sFilePath;
-
-	//  FORMAT STRING FOR EXECUTABLE NAME
-	const size_t slash = sFilePath.find_last_of("/\\");
-	sSelectedFile = sFilePath.substr(slash + 1);
-
-	//  SUCCESS, CLEAN UP
-	CoTaskMemFree(f_Path);
-	f_Files->Release();
-	f_FileSystem->Release();
-	CoUninitialize();
-	return TRUE;
 }
+
+int runRecon(ReconDTO dto)
+{
+
+	Point_vector points;
+
+	// Loads point set from a file.
+	//const std::string input_file(CGAL::data_file_path("points_3/machine.xyz"));
+	//const std::string input_file(CGAL::data_file_path("points_3/building.ply"));
+	//const std::string input_file(CGAL::data_file_path("points_3/ball.ply"));
+
+	//const std::string& input_file(CGAL::data_file_path("points_3/dvp_clean1_2cm.xyz"));
+	const std::string input_file = dto.fileName;
+	std::ifstream input_stream(input_file.c_str());
+	if (input_stream.fail()) {
+		std::cerr << "failed open file \'" << input_file << "\'" << std::endl;
+		return EXIT_FAILURE;
+	}
+	input_stream.close();
+	std::cout << "Loading point cloud: " << input_file << "...";
+
+	CGAL::Timer t;
+	t.start();
+	if (!CGAL::IO::read_points(input_file.c_str(), std::back_inserter(points),
+		CGAL::parameters::point_map(Point_map()).normal_map(Normal_map())))
+	{
+		std::cerr << "Error: cannot read file " << input_file << std::endl;
+		return EXIT_FAILURE;
+	}
+	else
+		std::cout << " Done. " << points.size() << " points. Time: " << t.time() << " sec." << std::endl;
+
+	// Shape detection
+	Efficient_ransac ransac;
+	ransac.set_input(points);
+	ransac.add_shape_factory<Plane>();
+
+	Efficient_ransac::Parameters parameters;
+	parameters.cluster_epsilon = dto.ransacClusterEpsilon;
+	parameters.epsilon = dto.ransacEpsilon;
+	parameters.min_points = dto.ransacMinPoints;
+	parameters.probability = dto.ransacProbability;
+
+	std::cout << "Extracting planes...";
+	t.reset();
+	ransac.detect();
+
+	Efficient_ransac::Plane_range planes = ransac.planes();
+	std::size_t num_planes = planes.size();
+
+	std::cout << " Done. " << num_planes << " planes extracted. Time: " << t.time() << " sec." << std::endl;
+
+	// Stores the plane index of each point as the third element of the tuple.
+	Point_to_shape_index_map shape_index_map(points, planes);
+	for (std::size_t i = 0; i < points.size(); ++i) {
+		// Uses the get function from the property map that accesses the 3rd element of the tuple.
+		int plane_index = get(shape_index_map, i);
+		points[i].get<2>() = plane_index;
+	}
+
+	//////////////////////////////////////////////////////////////////////////
+
+	std::cout << "Generating candidate faces...";
+	t.reset();
+
+	Polygonal_surface_reconstruction algo(
+		points,
+		Point_map(),
+		Normal_map(),
+		Plane_index_map()
+	);
+
+	std::cout << " Done. Time: " << t.time() << " sec." << std::endl;
+
+	//////////////////////////////////////////////////////////////////////////
+
+// Also stores the candidate faces as a surface mesh to a file
+	Surface_mesh candidate_faces;
+	algo.output_candidate_faces(candidate_faces);
+	//const std::string& candidate_faces_file("./output/cube_candidate_faces.off");
+	std::string candidate_faces_file = dto.outputFileDir + R"(\candidate_faces.off)";
+	std::ofstream candidate_stream(candidate_faces_file.c_str());
+	if (CGAL::IO::write_OFF(candidate_stream, candidate_faces))
+		std::cout << "Candidate faces saved to " << candidate_faces_file << "." << std::endl;
+
+	//////////////////////////////////////////////////////////////////////////
+
+	Surface_mesh model;
+
+	std::cout << "Reconstructing...";
+	t.reset();
+
+	if (!algo.reconstruct<MIP_Solver>(model)) {
+		std::cerr << " Failed: " << algo.error_message() << std::endl;
+		return EXIT_FAILURE;
+	}
+
+	//const std::string& output_file("./output/building_result_ransac.off");
+	std::string output_file = dto.outputFileDir + R"(\result.off)";
+	if (CGAL::IO::write_OFF(output_file, model))
+		//TODO: make this class ask for the reference to the current status string
+		std::cout << " Done. Saved to " << output_file << ". Time: " << t.time() << " sec." << std::endl;
+	else {
+		std::cerr << " Failed saving file." << std::endl;
+		return EXIT_FAILURE;
+	}
+
+	return EXIT_SUCCESS;
+}
+
+
+#else
+
+int main(int, char**)
+{
+	std::cerr << "This test requires either GLPK or SCIP.\n";
+	return EXIT_SUCCESS;
+}
+
+#endif  // defined(CGAL_USE_GLPK) || defined(CGAL_USE_SCIP)
 
